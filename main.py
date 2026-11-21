@@ -17,11 +17,24 @@ library and makes no network requests.
 
 import os
 import shutil
+import struct
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _SOURCE = os.path.join(_HERE, "entry.png")
 _DEST = "/output/entry.png"
+_MAX_BYTES = 1_048_576
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def _png_dimensions(path: str) -> tuple[int, int]:
+    """Read width/height from a PNG's IHDR chunk (stdlib only)."""
+    with open(path, "rb") as f:
+        header = f.read(33)
+    if header[:8] != _PNG_SIGNATURE or header[12:16] != b"IHDR":
+        raise ValueError("not a PNG file")
+    width, height = struct.unpack(">II", header[16:24])
+    return width, height
 
 
 def main() -> int:
@@ -31,7 +44,14 @@ def main() -> int:
     os.makedirs(os.path.dirname(_DEST), exist_ok=True)
     shutil.copyfile(_SOURCE, _DEST)
     size = os.path.getsize(_DEST)
-    print(f"wrote {_DEST} ({size} bytes)")
+    if size > _MAX_BYTES:
+        print(f"output too large: {size} bytes > {_MAX_BYTES}", file=sys.stderr)
+        return 1
+    width, height = _png_dimensions(_DEST)
+    if width > 1024 or height > 1024:
+        print(f"output too big: {width}x{height}", file=sys.stderr)
+        return 1
+    print(f"wrote {_DEST} ({size} bytes, {width}x{height} PNG)")
     return 0
 
 
